@@ -1,0 +1,130 @@
+<html>
+	<head>
+		<title>WebSocket client example</title>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<script src="http://fargo.io/code/jquery-1.9.1.min.js"></script>
+        <script src="client-webgl/js.libs/lzma.min.js"></script>
+		<link href="http://fargo.io/code/ubuntuFont.css" rel="stylesheet" type="text/css">
+		<style>
+			body {
+				font-family: Ubuntu;
+				font-size: 18px;
+				background-color: whitesmoke;
+				}
+			.divPageBody {
+				width: 60%;
+				margin-top: 90px;
+				margin-left: auto;
+				margin-right: auto;
+				}
+			</style>
+		</head>
+	<body>
+        
+        <!-- render kinect data into html5 canvas-->
+         <canvas id="canvas" width="632" height="480"></canvas>
+		<div class="divPageBody">
+			<h1>WebSocket client</h1>
+			<p>This app sends one message every second to a server, and displays the result below. The server uppercases the text and adds three exclams at the end.</p>
+			<p id="idWebSocketResult">
+				</p>
+			<p id="idWebSocketTime"></p>
+			</div>
+        <script>
+            var urlMySocket = "ws://localhost:9000/";
+            var ctSeconds = 0;
+            var rawDataLen = 5+(632*480); //hopefully this works
+            var outArrays = (function() {
+                             var _results;
+                             _results = [];
+                             for (i = 0; i <= 1; i++) {
+                             //where do i get rawDataLen
+                             _results.push(new Uint8Array(new ArrayBuffer(rawDataLen)));
+                             }
+                             return _results;
+                             })();
+                             
+                             function secondsSince (when) {
+                                 var now = new Date ();
+                                 when = new Date (when);
+                                 return ((now - when) / 1000);
+                             }
+        function callSocket (s, callback) {
+            var whenstart = new Date ();
+            var mySocket = new WebSocket (urlMySocket);
+            mySocket.onopen = function (evt) {
+                mySocket.send (s);
+            };
+            mySocket.onmessage = function (evt) {
+                $("#idWebSocketTime").text ("The call to the server took " + secondsSince (whenstart) + " secs.");
+                callback (evt.data);
+                mySocket.close ();
+            };
+        }
+        function everySecond () {
+            callSocket ("WebSocket test #" + ctSeconds++, function (s) {
+                        console.log("uhhhh can i get");
+                        var reader = new FileReader();
+                        reader.addEventListener("loadend", function() {
+                                                // reader.result contains the contents of blob as a typed array
+                                                var currentOutArrayIdx = 0; //hopefully this works
+                                                console.log(reader.result);
+                                                var e = reader.result;
+                                                var inStream = LZMA.wrapArrayBuffer(new Uint8Array(e.data));
+                                                var outStream = LZMA.wrapArrayBuffer(outArrays[currentOutArrayIdx]);
+                                                LZMA.decompress(inStream, inStream, outStream, rawDataLen);
+                                                var bytes = outStream.data;
+                                                console.log(bytes);
+                                                createImage(bytes);
+                                                });
+                        reader.readAsArrayBuffer(s);
+                        $("#idWebSocketResult").text (s);
+                        });
+        }
+        
+        function createImage(bytes){
+            var canvas = document.getElementById('canvas');
+            var ctx = canvas.getContext('2d');
+
+            var myImageData = ctx.createImageData(632, 480);
+            var data = myImageData.data;
+            console.log("data",data)
+            
+            var i2 = 5;
+            for (var i = 0; i < data.length; i += 4) {
+                
+                data[i]     = bytes[i2];     // red
+                data[i + 1] = bytes[i2]; // green
+                data[i + 2] = bytes[i2]; // blue
+                data[i + 3] = 255; // alpha
+
+                i2++;
+            }
+            
+            myImageData.data = data;
+            console.log("data2",data)
+
+            ctx.putImageData(myImageData, 0, 0);
+        }
+        function startup () {
+            element = document.getElementById("canvas");
+            c = element.getContext("2d");
+            c.fillStyle = "#ffaaaa";
+            c.fillRect(0, 0, 150, 600); // background gray
+            c.strokeRect(20, 10, 80, 60); // black rectangle
+
+            console.log ("startup");
+            self.setInterval (everySecond, 1000);
+        }
+        </script>
+
+		<script>
+			$(document).ready (function () {
+				startup ();
+				});
+			</script>
+        
+		</body>
+	</html>
+

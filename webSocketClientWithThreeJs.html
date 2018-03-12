@@ -1,0 +1,211 @@
+<html>
+	<head>
+		<title>WebSocket client example</title>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<script src="http://fargo.io/code/jquery-1.9.1.min.js"></script>
+        <script src="client-webgl/js.libs/lzma.min.js"></script>
+        <script src="three.min.js"></script>
+		<link href="http://fargo.io/code/ubuntuFont.css" rel="stylesheet" type="text/css">
+		<script>
+            var myDepth;
+			var urlMySocket = "ws://localhost:9000/";
+			var ctSeconds = 0;
+            var outArrays = (function() {
+                             var _results;
+                             _results = [];
+                             for (i = 0; i <= 1; i++) {
+                             _results.push(new Uint8Array(new ArrayBuffer(rawDataLen)));
+                             }
+                             return _results;
+                             })();
+                             
+			function secondsSince (when) {
+				var now = new Date ();
+				when = new Date (when);
+				return ((now - when) / 1000);
+				}
+			function callSocket (s, callback) {
+				var whenstart = new Date ();
+				var mySocket = new WebSocket (urlMySocket);
+				mySocket.onopen = function (evt) {
+					mySocket.send (s);
+					};
+				mySocket.onmessage = function (evt) {
+					$("#idWebSocketTime").text ("The call to the server took " + secondsSince (whenstart) + " secs.");
+					callback (evt.data);
+					mySocket.close ();
+					};
+				}
+			function everySecond () {
+				callSocket ("WebSocket test #" + ctSeconds++, function (var s) {
+                            var reader = new FileReader();
+                            reader.addEventListener("loadend", function() {
+                                                    // reader.result contains the contents of blob as a typed array
+                                                    console.log(reader.result);
+                                                    var e = reader.result;
+                                                    var inStream = LZMA.wrapArrayBuffer(new Uint8Array(e.data));
+                                                    var outStream = LZMA.wrapArrayBuffer(outArrays[currentOutArrayIdx]);
+                                                    LZMA.decompress(inStream, inStream, outStream, rawDataLen);
+                                                    var bytes = outStream.data;
+                                                    console.log(bytes);
+                                                    myDepth = bytes.slice(5);
+                                                    });
+                            reader.readAsArrayBuffer(s);
+                            $("#idWebSocketResult").text (s);
+					});
+				}
+        /*
+            function createImage(var bytes){
+                var myImageData = ctx.createImageData(632, 480);
+                var data = imageData.data;
+                
+                var i2 = 5;
+                for (var i = 0; i < data.length; i += 4) {
+                    
+                    data[i]     = bytes[i2];     // red
+                    data[i + 1] = bytes[i2]; // green
+                    data[i + 2] = bytes[i2]; // blue
+                    i2++;
+                }
+                
+                var canvas = document.getElementById('canvas');
+                var ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+            }*/
+			function startup () {
+				console.log ("startup");
+				self.setInterval (everySecond, 1000);
+				}
+			</script>
+
+		</head>
+	<body>
+        
+            <script>
+			$(document).ready (function () {
+				startup ();
+				});
+			</script>
+		</body>
+    <script type="x-shader/x-vertex" id="vertexShader">
+        varying vec2 vUv;
+        varying vec4 myPosition;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+            myPosition = gl_Position;
+        }
+    </script>
+    
+    <script type="x-shader/x-fragment" id="blueShader">
+        varying vec2 vUv;
+        varying vec4 myPosition;
+        varying float depth;
+
+        uniform float time;
+        uniform vec2 resolution;
+
+    void main() {
+        vec2 position = myPosition.xy;
+        gl_FragColor = vec4(depth,depth,depth,1.0);
+    }
+    
+        </script>
+
+    <script>
+        // <![CDATA[
+        // Our 3D code will go here...
+        // Set up the scene, camera, and renderer as global variables.
+        var scene, camera, renderer, clock;
+        var startTime = Date.now();
+        var mouse = new THREE.Vector2();
+        var initialZoom;
+        var bufferScene; //= new THREE.Scene();
+        var bufferTextureA;
+        var bufferTextureB;
+        var uniforms =     {time: {type:"f", value: 1.0 },
+            resolution: {type:"v2", value: new THREE.Vector2(window.innerWidth, window.innerHeight)}
+        };
+        var attributes = {
+            depth: { type: 'f', value: myDepth },
+        };
+    
+    var counter = 1.0;
+    var group;
+    var mouseDown= false;
+    var planeMesh2;
+    init();
+    animate();
+    function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+    }
+    // Globals from the previous step go here...
+    // Sets up the scene.
+    function init() {
+        // Create the scene and set the scene size.
+        scene = new THREE.Scene();
+        var WIDTH = window.innerWidth,
+        HEIGHT = window.innerHeight;
+        var ambient = new THREE.AmbientLight( 0xffffff, 200. );
+        // Create a renderer and add it to the DOM.
+        renderer = new THREE.WebGLRenderer({antialias:true});
+        renderer.setSize(WIDTH, HEIGHT);
+        //renderer.shadowMap.enabled = true;
+        //renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        scene.background = new THREE.Color( 0xff0000 );
+        renderer.gammaInput = true;
+        renderer.gammaOutput = true;
+        document.body.appendChild(renderer.domElement);
+        // Set the background color of the scene.
+        renderer.setClearColor(0x000000, 1);
+        // Create a camera, zoom it out from the model a bit, and add it to the scene.
+        var border = 0;
+        camera = new THREE.OrthographicCamera( WIDTH / - 2 - border, WIDTH / 2 + border, HEIGHT / 2 + border, HEIGHT / - 2 - border, -4000, 4000 );
+        scene.add(camera);
+        initialZoom=camera.zoom;
+        scene.add(new THREE.AmbientLight(0xffff00));
+        
+        // Create an event listener that resizes the renderer with the browser window.
+        window.addEventListener('resize', function() {
+                                var WIDTH = window.innerWidth,
+                                HEIGHT = window.innerHeight;
+                                renderer.setSize(WIDTH, HEIGHT);
+                                camera.aspect = WIDTH / HEIGHT;
+                                camera.updateProjectionMatrix();
+                                });
+                                var material = new THREE.ShaderMaterial( {
+                                                                        uniforms: uniforms,
+                                                                        attributes: attributes,
+                                                                        vertexShader: document.getElementById( 'vertexShader' ).textContent,
+                                                                        fragmentShader: document.getElementById( 'fragmentShader' ).textContent
+                                                                        }
+                                                                        );
+                                                                        material.side = THREE.DoubleSide;
+                                                                        var planeMesh = new THREE.Mesh(
+                                                                                                       new THREE.PlaneGeometry( window.innerWidth, window.innerHeight ),
+                                                                                                       material);
+                                                                                                       scene.add(planeMesh);
+                                                                                                       camera.position.set( 0, 0, -120 );
+    }
+    function animate() {
+        // Read more about requestAnimationFrame at http://www.paulirish.com/2011/requestanimationframe-for-smart-animating/
+        requestAnimationFrame(animate);
+        counter++;
+        uniforms.time.value = counter;
+        uniforms.resolution.value = new THREE.Vector2(window.innerWidth,window.innerHeight);
+        if(eegData)
+        {
+            
+        }
+        // Render the scene.
+        render();
+    }
+    function render() {
+        renderer.render( scene, camera );
+    }
+    // ]]>
+        </script>
+
+	</html>
+
